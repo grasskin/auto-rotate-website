@@ -36,15 +36,22 @@ class App extends Component {
         super(props);
         this.state = {
             loading: true,
+            angle: 0,
+            height: window.innerHeight,
         }
         this.video = React.createRef();
+        this.red = React.createRef();
     }
 
     componentDidMount() {
-        this.setupCamera()
+        this.setupCameraModel()
+    }
+    componentWillUnmount() {
+      clearInterval(this.interval);
     }
 
-    setupCamera = async () => {
+    setupCameraModel = async () => {
+        this.net = await posenet.load();
         this.video.current.width = videoWidth;
         this.video.current.height = videoHeight;
 
@@ -66,8 +73,29 @@ class App extends Component {
 
         this.video.current.onloadedmetadata = () => {
             this.video.current.play();
-            this.setState({ loading: false });
+            this.setState({ loading: false }, () => this.interval = setInterval(this.getAngle, 500));
         }
+    }
+
+    getAngle = async () => {
+      try {
+        const poses = await this.net.estimateMultiplePoses(this.video.current, imageScaleFactor, flipHorizontal, outputStride, maxPoseDetections);
+        const lEye = poses[0].keypoints[1] // left eye
+        const rEye = poses[0].keypoints[2] // right eye
+        let y = lEye.position.y - rEye.position.y;
+        let x = rEye.position.x - lEye.position.x;
+        let newAngle = Math.atan(y/x);
+        let newAngleDeg = Math.atan(y/x) * 180 / Math.PI;;
+        console.log(newAngle);
+        let height = ((window.innerHeight/Math.cos(newAngle)) - ((Math.sin(newAngle)*window.innerWidth)/Math.pow(Math.cos(newAngle),2)))/(1-Math.pow(Math.tan(newAngle), 2))
+        console.log('H', Math.round(height));
+        if(Math.abs(this.state.angle - newAngleDeg) > 20){
+          this.setState({angle: newAngle, height: height});
+        }
+        console.log(this.state);
+      } catch (e) {
+        console.log(e.message);
+      }
     }
 
     render() {
@@ -80,7 +108,8 @@ class App extends Component {
         return (
             <div className="App">
           {page}
-          <video id="video" ref={this.video} playsInline />
+          <video id="video" ref={this.video} style={{transform: 'rotate('+this.state.angle+'deg)'}} playsInline />
+          <div ref={this.red} style={{'background': 'red', 'width': '500px', 'height': this.state.height +'px'}} />
           </div>
         );
     }
